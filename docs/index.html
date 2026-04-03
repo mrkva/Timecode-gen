@@ -103,20 +103,23 @@
 
     .toggle-group {
       display: flex;
-      gap: 8px;
+      gap: 6px;
+      flex-wrap: wrap;
     }
 
     .toggle-btn {
-      flex: 1;
-      padding: 12px 0;
+      flex: 1 1 auto;
+      min-width: 55px;
+      padding: 12px 6px;
       border: 1px solid #2a2a40;
       border-radius: 8px;
       background: #1a1a2e;
       color: #888;
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
+      text-align: center;
     }
 
     .toggle-btn.active {
@@ -198,8 +201,10 @@
     <div class="setting-group">
       <div class="setting-label">Frame Rate</div>
       <div class="toggle-group" id="frameRateGroup">
+        <button class="toggle-btn" data-value="23.976">23.976</button>
         <button class="toggle-btn" data-value="24">24</button>
         <button class="toggle-btn" data-value="25">25</button>
+        <button class="toggle-btn" data-value="29.97">29.97 DF</button>
         <button class="toggle-btn active" data-value="30">30</button>
       </div>
     </div>
@@ -221,16 +226,195 @@
   <div id="status">Stopped</div>
 
   <script>
+    // --- LTC generation (shared between worklet and fallback) ---
+    // Duplicated here for the ScriptProcessor fallback on iOS
+    const LTC = {
+      currentLevel: 1.0,
+      frameBuffer: null,
+      frameBufferIndex: 0,
+      totalFrameCount: 0,
+      volume: 0.6,
+      frameRate: 30,
+      nominalRate: 30,
+      dropFrame: false,
+      samplesPerBit: 0,
+      samplesPerFrame: 0,
+
+      applyFrameRate(rate) {
+        this.frameRate = rate;
+        this.dropFrame = false;
+        if (rate === 29.97) {
+          this.nominalRate = 30;
+          this.dropFrame = true;
+        } else if (rate === 23.976) {
+          this.nominalRate = 24;
+        } else {
+          this.nominalRate = rate;
+        }
+      },
+
+      init(rate, volume, wallTimeMs, tzOffsetHours, sr) {
+        this.applyFrameRate(rate);
+        this.volume = volume;
+        this.samplesPerBit = Math.floor(sr / (this.nominalRate * 80));
+        this.samplesPerFrame = this.samplesPerBit * 80;
+        this.totalFrameCount = this.wallTimeToFrameCount(wallTimeMs, tzOffsetHours);
+        this.frameBuffer = null;
+        this.frameBufferIndex = 0;
+        this.currentLevel = 1.0;
+      },
+
+      wallTimeToFrameCount(wallTimeMs, tzOffsetHours) {
+        const d = new Date(wallTimeMs);
+        const utcH = d.getUTCHours();
+        const utcM = d.getUTCMinutes();
+        const utcS = d.getUTCSeconds();
+        const utcMs = d.getUTCMilliseconds();
+        let totalSeconds = (utcH + tzOffsetHours) * 3600 + utcM * 60 + utcS;
+        totalSeconds = ((totalSeconds % 86400) + 86400) % 86400;
+        let totalFrames = totalSeconds * this.nominalRate +
+          Math.floor(utcMs / (1000 / this.nominalRate));
+        if (this.dropFrame) {
+          const mins = Math.floor(totalSeconds / 60);
+          const tenMins = Math.floor(mins / 10);
+          totalFrames -= 2 * (mins - tenMins);
+        }
+        return totalFrames;
+      },
+
+      frameCountToTC(count) {
+        const maxFrames = 24 * 3600 * this.nominalRate;
+        count = ((count % maxFrames) + maxFrames) % maxFrames;
+        if (this.dropFrame) {
+          const D = Math.floor(count / 17982);
+          const M = count % 17982;
+          let f, s, m;
+          if (M < 2) {
+            f = M; s = 0; m = 0;
+          } else {
+            const adj = M - 2;
+            const subMin = Math.floor(adj / 1798);
+            const rem = adj % 1798;
+            m = subMin + 1;
+            if (rem < this.nominalRate - 2) {
+              f = rem + 2; s = 0;
+            } else {
+              const rem2 = rem - (this.nominalRate - 2);
+              s = Math.floor(rem2 / this.nominalRate) + 1;
+              f = rem2 % this.nominalRate;
+            }
+          }
+          const totalMin = D * 10 + m;
+          return { h: Math.floor(totalMin / 60) % 24, m: totalMin % 60, s, f };
+        }
+        const f = count % this.nominalRate;
+        const totalSec = Math.floor(count / this.nominalRate);
+        const s = totalSec % 60;
+        const totalMin = Math.floor(totalSec / 60);
+        return { h: Math.floor(totalMin / 60) % 24, m: totalMin % 60, s, f };
+      },
+
+      getLtcBits(h, m, s, f) {
+        const bits = new Uint8Array(80);
+        const set = (start, value, length) => {
+          for (let i = 0; i < length; i++) bits[start + i] = (value >> i) & 1;
+        };
+        set(0, f % 10, 4);
+        set(8, Math.floor(f / 10), 2);
+        set(16, s % 10, 4);
+        set(24, Math.floor(s / 10), 3);
+        set(32, m % 10, 4);
+        set(40, Math.floor(m / 10), 3);
+        set(48, h % 10, 4);
+        set(56, Math.floor(h / 10), 2);
+        if (this.dropFrame) bits[10] = 1;
+        const sync = [0,0,1,1,1,1,1,1,1,1,1,1,1,1,0,1];
+        for (let i = 0; i < 16; i++) bits[64 + i] = sync[i];
+        return bits;
+      },
+
+      generateWave(bits) {
+        const samples = new Float32Array(this.samplesPerFrame);
+        let idx = 0;
+        for (let b = 0; b < 80; b++) {
+          this.currentLevel *= -1;
+          if (bits[b] === 0) {
+            for (let i = 0; i < this.samplesPerBit; i++) samples[idx++] = this.currentLevel;
+          } else {
+            const half = Math.floor(this.samplesPerBit / 2);
+            for (let i = 0; i < half; i++) samples[idx++] = this.currentLevel;
+            this.currentLevel *= -1;
+            for (let i = 0; i < this.samplesPerBit - half; i++) samples[idx++] = this.currentLevel;
+          }
+        }
+        return samples;
+      },
+
+      generateNextFrame() {
+        const tc = this.frameCountToTC(this.totalFrameCount);
+        const bits = this.getLtcBits(tc.h, tc.m, tc.s, tc.f);
+        this.frameBuffer = this.generateWave(bits);
+        this.frameBufferIndex = 0;
+        this.totalFrameCount++;
+        return tc;
+      },
+
+      fillBuffer(output) {
+        for (let i = 0; i < output.length; i++) {
+          if (!this.frameBuffer || this.frameBufferIndex >= this.frameBuffer.length) {
+            this.generateNextFrame();
+          }
+          output[i] = this.frameBuffer[this.frameBufferIndex++] * this.volume;
+        }
+      }
+    };
+
+    // --- Timecode display clock (always runs) ---
+    function formatTC(h, m, s, f, dropFrame) {
+      const sep = dropFrame ? ';' : ':';
+      return String(h).padStart(2, '0') + ':' +
+             String(m).padStart(2, '0') + ':' +
+             String(s).padStart(2, '0') + sep +
+             String(f).padStart(2, '0');
+    }
+
+    function getCurrentTC(frameRate, tzOffset) {
+      const now = Date.now();
+      const d = new Date(now);
+      const utcH = d.getUTCHours();
+      const utcM = d.getUTCMinutes();
+      const utcS = d.getUTCSeconds();
+      const utcMs = d.getUTCMilliseconds();
+
+      let dropFrame = false;
+      let nominalRate = frameRate;
+      if (frameRate === 29.97) { nominalRate = 30; dropFrame = true; }
+      else if (frameRate === 23.976) { nominalRate = 24; }
+
+      let totalSeconds = (utcH + tzOffset) * 3600 + utcM * 60 + utcS;
+      totalSeconds = ((totalSeconds % 86400) + 86400) % 86400;
+
+      const f = Math.floor(utcMs / (1000 / nominalRate));
+      const s = totalSeconds % 60;
+      const m = Math.floor(totalSeconds / 60) % 60;
+      const h = Math.floor(totalSeconds / 3600) % 24;
+
+      return formatTC(h, m, s, f, dropFrame);
+    }
+
     // --- State ---
     let audioCtx = null;
     let workletNode = null;
+    let scriptNode = null;
     let wakeLock = null;
     let isRunning = false;
+    let useWorklet = true;
+    let clockTimer = null;
 
     // --- Settings (with localStorage persistence) ---
     function loadSettings() {
       return {
-        frameRate: parseInt(localStorage.getItem('ltc_frameRate') || '30'),
+        frameRate: parseFloat(localStorage.getItem('ltc_frameRate') || '30'),
         tzOffset: parseFloat(localStorage.getItem('ltc_tzOffset') ??
           String(-new Date().getTimezoneOffset() / 60)),
         volume: parseInt(localStorage.getItem('ltc_volume') || '60'),
@@ -270,22 +454,36 @@
 
     // --- Apply saved settings to UI ---
     frameRateGroup.querySelectorAll('.toggle-btn').forEach(btn => {
-      btn.classList.toggle('active', parseInt(btn.dataset.value) === settings.frameRate);
+      btn.classList.toggle('active', parseFloat(btn.dataset.value) === settings.frameRate);
     });
     volumeSlider.value = settings.volume;
     volumeValue.textContent = settings.volume + '%';
+
+    // --- Always-on timecode clock ---
+    function startClock() {
+      if (clockTimer) return;
+      function tick() {
+        if (!isRunning) {
+          timecodeEl.textContent = getCurrentTC(settings.frameRate, settings.tzOffset);
+        }
+        clockTimer = requestAnimationFrame(tick);
+      }
+      tick();
+    }
+    startClock();
 
     // --- Frame rate buttons ---
     frameRateGroup.addEventListener('click', (e) => {
       const btn = e.target.closest('.toggle-btn');
       if (!btn) return;
-      const val = parseInt(btn.dataset.value);
+      const val = parseFloat(btn.dataset.value);
       settings.frameRate = val;
       saveSetting('frameRate', val);
       frameRateGroup.querySelectorAll('.toggle-btn').forEach(b =>
         b.classList.toggle('active', b === btn));
-      if (isRunning && workletNode) {
-        workletNode.port.postMessage({ type: 'config', frameRate: val });
+      if (isRunning) {
+        // Restart to apply new frame rate
+        stopLTC().then(() => startLTC());
       }
     });
 
@@ -293,7 +491,6 @@
     tzSelect.addEventListener('change', () => {
       settings.tzOffset = parseFloat(tzSelect.value);
       saveSetting('tzOffset', settings.tzOffset);
-      // Timezone change requires restart to re-seed frame counter
       if (isRunning) {
         stopLTC().then(() => startLTC());
       }
@@ -304,8 +501,12 @@
       settings.volume = parseInt(volumeSlider.value);
       volumeValue.textContent = settings.volume + '%';
       saveSetting('volume', settings.volume);
-      if (isRunning && workletNode) {
-        workletNode.port.postMessage({ type: 'config', volume: settings.volume / 100 });
+      if (isRunning) {
+        if (workletNode) {
+          workletNode.port.postMessage({ type: 'config', volume: settings.volume / 100 });
+        } else {
+          LTC.volume = settings.volume / 100;
+        }
       }
     });
 
@@ -320,33 +521,66 @@
 
     async function startLTC() {
       try {
-        audioCtx = new AudioContext({ sampleRate: 48000 });
-        await audioCtx.audioWorklet.addModule('ltc-worklet.js');
-        workletNode = new AudioWorkletNode(audioCtx, 'ltc-processor');
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
 
-        workletNode.port.onmessage = (e) => {
-          if (e.data.type === 'timecode') {
-            timecodeEl.textContent = e.data.tc;
+        // Try AudioWorklet first, fall back to ScriptProcessor for iOS
+        let started = false;
+        if (audioCtx.audioWorklet) {
+          try {
+            await audioCtx.audioWorklet.addModule('ltc-worklet.js');
+            workletNode = new AudioWorkletNode(audioCtx, 'ltc-processor');
+
+            workletNode.port.onmessage = (e) => {
+              if (e.data.type === 'timecode') {
+                timecodeEl.textContent = e.data.tc;
+              }
+            };
+
+            workletNode.connect(audioCtx.destination);
+            workletNode.port.postMessage({
+              type: 'start',
+              frameRate: settings.frameRate,
+              volume: settings.volume / 100,
+              wallTimeMs: Date.now(),
+              tzOffsetHours: settings.tzOffset,
+            });
+            useWorklet = true;
+            started = true;
+          } catch (_) {
+            // AudioWorklet failed, fall through to ScriptProcessor
           }
-        };
+        }
 
-        workletNode.connect(audioCtx.destination);
-
-        workletNode.port.postMessage({
-          type: 'start',
-          frameRate: settings.frameRate,
-          volume: settings.volume / 100,
-          wallTimeMs: Date.now(),
-          tzOffsetHours: settings.tzOffset,
-        });
+        if (!started) {
+          // ScriptProcessor fallback (works on iOS Safari)
+          LTC.init(settings.frameRate, settings.volume / 100, Date.now(), settings.tzOffset, audioCtx.sampleRate);
+          const bufSize = 2048;
+          scriptNode = audioCtx.createScriptProcessor(bufSize, 0, 1);
+          let lastTcStr = '';
+          scriptNode.onaudioprocess = (e) => {
+            const output = e.outputBuffer.getChannelData(0);
+            LTC.fillBuffer(output);
+            const tc = LTC.frameCountToTC(LTC.totalFrameCount);
+            const dropFrame = LTC.dropFrame;
+            const tcStr = formatTC(tc.h, tc.m, tc.s, tc.f, dropFrame);
+            if (tcStr !== lastTcStr) {
+              lastTcStr = tcStr;
+              timecodeEl.textContent = tcStr;
+            }
+          };
+          scriptNode.connect(audioCtx.destination);
+          useWorklet = false;
+          started = true;
+        }
 
         isRunning = true;
         startBtn.textContent = 'Stop';
         startBtn.className = 'running';
         timecodeEl.classList.add('running');
-        statusEl.textContent = 'Generating LTC @ ' + settings.frameRate + ' fps';
+        const rateLabel = settings.frameRate === 29.97 ? '29.97 DF' : String(settings.frameRate);
+        statusEl.textContent = 'Generating LTC @ ' + rateLabel + ' fps' +
+          (useWorklet ? '' : ' (compat mode)');
 
-        // Wake lock
         try {
           wakeLock = await navigator.wakeLock.request('screen');
         } catch (_) {}
@@ -361,6 +595,10 @@
         workletNode.port.postMessage({ type: 'stop' });
         workletNode.disconnect();
         workletNode = null;
+      }
+      if (scriptNode) {
+        scriptNode.disconnect();
+        scriptNode = null;
       }
       if (audioCtx) {
         await audioCtx.close();

@@ -188,6 +188,26 @@
       font-size: 13px;
       color: #444;
     }
+
+    #updateBanner {
+      display: none;
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #2563eb;
+      color: #fff;
+      padding: 16px 20px;
+      font-size: 15px;
+      font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      z-index: 100;
+    }
+
+    #updateBanner:active {
+      background: #1d4ed8;
+    }
   </style>
 </head>
 <body>
@@ -224,6 +244,7 @@
   </div>
 
   <div id="status">Stopped</div>
+  <div id="updateBanner" onclick="location.reload()">Update available — tap to reload</div>
 
   <script>
     // --- LTC generation (shared between worklet and fallback) ---
@@ -614,9 +635,39 @@
       statusEl.textContent = 'Stopped';
     }
 
-    // --- Service Worker Registration ---
+    // --- Service Worker Registration + Update Detection ---
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js');
+      navigator.serviceWorker.register('sw.js').then(reg => {
+        // Check for updates every 60 seconds
+        setInterval(() => reg.update(), 60000);
+
+        const showUpdateBanner = () => {
+          document.getElementById('updateBanner').style.display = 'block';
+        };
+
+        // New SW waiting to activate
+        if (reg.waiting) {
+          showUpdateBanner();
+        }
+
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              showUpdateBanner();
+            }
+          });
+        });
+      });
+
+      // If a new SW took over, reload to get fresh assets
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          location.reload();
+        }
+      });
     }
   </script>
 </body>

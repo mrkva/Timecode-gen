@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ltc-v2';
+const CACHE_NAME = 'ltc-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -32,4 +32,11 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request)
       .then(cached => cached || fetch(event.request))
   );
+});
+
+// Tell the page when a new version activates
+self.addEventListener('message', (event) => {
+  if (event.data === 'getVersion') {
+    event.source.postMessage({ type: 'version', version: CACHE_NAME });
+  }
 });

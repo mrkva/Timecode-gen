@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f0f1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>LTC Timecode Generator</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0f0f1a;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #888;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+
+    #timecode {
+      font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
+      font-size: 56px;
+      font-weight: 700;
+      color: #f0f0f0;
+      letter-spacing: 3px;
+      padding: 20px;
+      margin-bottom: 32px;
+      text-align: center;
+      min-width: 340px;
+      border-radius: 12px;
+      background: #1a1a2e;
+      border: 1px solid #2a2a40;
+      transition: color 0.3s;
+    }
+
+    #timecode.running {
+      color: #4ade80;
+    }
+
+    #startBtn {
+      width: 200px;
+      height: 60px;
+      border: none;
+      border-radius: 30px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      margin-bottom: 40px;
+    }
+
+    #startBtn.stopped {
+      background: #4ade80;
+      color: #0f0f1a;
+    }
+
+    #startBtn.running {
+      background: #ef4444;
+      color: #fff;
+    }
+
+    #startBtn:active {
+      transform: scale(0.95);
+    }
+
+    .settings {
+      width: 100%;
+      max-width: 380px;
+    }
+
+    .setting-group {
+      margin-bottom: 24px;
+    }
+
+    .setting-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 10px;
+    }
+
+    .toggle-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    .toggle-btn {
+      flex: 1;
+      padding: 12px 0;
+      border: 1px solid #2a2a40;
+      border-radius: 8px;
+      background: #1a1a2e;
+      color: #888;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .toggle-btn.active {
+      background: #2563eb;
+      color: #fff;
+      border-color: #2563eb;
+    }
+
+    .toggle-btn:active {
+      transform: scale(0.95);
+    }
+
+    select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #2a2a40;
+      border-radius: 8px;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' fill='none' stroke-width='2'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 16px center;
+    }
+
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      height: 6px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: #2a2a40;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #2563eb;
+      cursor: pointer;
+    }
+
+    .slider-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #e0e0e0;
+      min-width: 42px;
+      text-align: right;
+    }
+
+    #status {
+      margin-top: auto;
+      padding-top: 24px;
+      font-size: 13px;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+  <h1>LTC Timecode</h1>
+
+  <div id="timecode">00:00:00:00</div>
+
+  <button id="startBtn" class="stopped">Start</button>
+
+  <div class="settings">
+    <div class="setting-group">
+      <div class="setting-label">Frame Rate</div>
+      <div class="toggle-group" id="frameRateGroup">
+        <button class="toggle-btn" data-value="24">24</button>
+        <button class="toggle-btn" data-value="25">25</button>
+        <button class="toggle-btn active" data-value="30">30</button>
+      </div>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-label">Time Zone</div>
+      <select id="tzSelect"></select>
+    </div>
+
+    <div class="setting-group">
+      <div class="setting-label">Volume</div>
+      <div class="slider-row">
+        <input type="range" id="volumeSlider" min="0" max="100" value="60">
+        <span class="slider-value" id="volumeValue">60%</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="status">Stopped</div>
+
+  <script>
+    // --- State ---
+    let audioCtx = null;
+    let workletNode = null;
+    let wakeLock = null;
+    let isRunning = false;
+
+    // --- Settings (with localStorage persistence) ---
+    function loadSettings() {
+      return {
+        frameRate: parseInt(localStorage.getItem('ltc_frameRate') || '30'),
+        tzOffset: parseFloat(localStorage.getItem('ltc_tzOffset') ??
+          String(-new Date().getTimezoneOffset() / 60)),
+        volume: parseInt(localStorage.getItem('ltc_volume') || '60'),
+      };
+    }
+
+    function saveSetting(key, value) {
+      localStorage.setItem('ltc_' + key, String(value));
+    }
+
+    const settings = loadSettings();
+
+    // --- UI Elements ---
+    const timecodeEl = document.getElementById('timecode');
+    const startBtn = document.getElementById('startBtn');
+    const frameRateGroup = document.getElementById('frameRateGroup');
+    const tzSelect = document.getElementById('tzSelect');
+    const volumeSlider = document.getElementById('volumeSlider');
+    const volumeValue = document.getElementById('volumeValue');
+    const statusEl = document.getElementById('status');
+
+    // --- Populate timezone dropdown ---
+    function populateTimezones() {
+      for (let offset = -12; offset <= 14; offset += 0.5) {
+        const opt = document.createElement('option');
+        const sign = offset >= 0 ? '+' : '';
+        const label = offset % 1 === 0
+          ? `UTC${sign}${offset}`
+          : `UTC${sign}${Math.floor(offset)}:30`;
+        opt.value = offset;
+        opt.textContent = label;
+        tzSelect.appendChild(opt);
+      }
+      tzSelect.value = settings.tzOffset;
+    }
+    populateTimezones();
+
+    // --- Apply saved settings to UI ---
+    frameRateGroup.querySelectorAll('.toggle-btn').forEach(btn => {
+      btn.classList.toggle('active', parseInt(btn.dataset.value) === settings.frameRate);
+    });
+    volumeSlider.value = settings.volume;
+    volumeValue.textContent = settings.volume + '%';
+
+    // --- Frame rate buttons ---
+    frameRateGroup.addEventListener('click', (e) => {
+      const btn = e.target.closest('.toggle-btn');
+      if (!btn) return;
+      const val = parseInt(btn.dataset.value);
+      settings.frameRate = val;
+      saveSetting('frameRate', val);
+      frameRateGroup.querySelectorAll('.toggle-btn').forEach(b =>
+        b.classList.toggle('active', b === btn));
+      if (isRunning && workletNode) {
+        workletNode.port.postMessage({ type: 'config', frameRate: val });
+      }
+    });
+
+    // --- Timezone select ---
+    tzSelect.addEventListener('change', () => {
+      settings.tzOffset = parseFloat(tzSelect.value);
+      saveSetting('tzOffset', settings.tzOffset);
+      // Timezone change requires restart to re-seed frame counter
+      if (isRunning) {
+        stopLTC().then(() => startLTC());
+      }
+    });
+
+    // --- Volume slider ---
+    volumeSlider.addEventListener('input', () => {
+      settings.volume = parseInt(volumeSlider.value);
+      volumeValue.textContent = settings.volume + '%';
+      saveSetting('volume', settings.volume);
+      if (isRunning && workletNode) {
+        workletNode.port.postMessage({ type: 'config', volume: settings.volume / 100 });
+      }
+    });
+
+    // --- Start/Stop ---
+    startBtn.addEventListener('click', () => {
+      if (isRunning) {
+        stopLTC();
+      } else {
+        startLTC();
+      }
+    });
+
+    async function startLTC() {
+      try {
+        audioCtx = new AudioContext({ sampleRate: 48000 });
+        await audioCtx.audioWorklet.addModule('ltc-worklet.js');
+        workletNode = new AudioWorkletNode(audioCtx, 'ltc-processor');
+
+        workletNode.port.onmessage = (e) => {
+          if (e.data.type === 'timecode') {
+            timecodeEl.textContent = e.data.tc;
+          }
+        };
+
+        workletNode.connect(audioCtx.destination);
+
+        workletNode.port.postMessage({
+          type: 'start',
+          frameRate: settings.frameRate,
+          volume: settings.volume / 100,
+          wallTimeMs: Date.now(),
+          tzOffsetHours: settings.tzOffset,
+        });
+
+        isRunning = true;
+        startBtn.textContent = 'Stop';
+        startBtn.className = 'running';
+        timecodeEl.classList.add('running');
+        statusEl.textContent = 'Generating LTC @ ' + settings.frameRate + ' fps';
+
+        // Wake lock
+        try {
+          wakeLock = await navigator.wakeLock.request('screen');
+        } catch (_) {}
+      } catch (err) {
+        statusEl.textContent = 'Error: ' + err.message;
+      }
+    }
+
+    async function stopLTC() {
+      isRunning = false;
+      if (workletNode) {
+        workletNode.port.postMessage({ type: 'stop' });
+        workletNode.disconnect();
+        workletNode = null;
+      }
+      if (audioCtx) {
+        await audioCtx.close();
+        audioCtx = null;
+      }
+      if (wakeLock) {
+        try { await wakeLock.release(); } catch (_) {}
+        wakeLock = null;
+      }
+      startBtn.textContent = 'Start';
+      startBtn.className = 'stopped';
+      timecodeEl.classList.remove('running');
+      statusEl.textContent = 'Stopped';
+    }
+
+    // --- Service Worker Registration ---
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js');
+    }
+  </script>
+</body>
+</html>

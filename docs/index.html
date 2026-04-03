@@ -542,11 +542,23 @@
 
     async function startLTC() {
       try {
-        audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+        // iOS Safari may ignore sampleRate option — we adapt to whatever it gives us
+        const AC = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AC({ sampleRate: 48000 });
 
-        // Try AudioWorklet first, fall back to ScriptProcessor for iOS
+        // iOS requires explicit resume inside a user gesture
+        if (audioCtx.state === 'suspended') {
+          await audioCtx.resume();
+        }
+
+        const actualRate = audioCtx.sampleRate;
+
+        // Skip AudioWorklet entirely on iOS (unreliable), go straight to ScriptProcessor
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
         let started = false;
-        if (audioCtx.audioWorklet) {
+        if (!isIOS && audioCtx.audioWorklet) {
           try {
             await audioCtx.audioWorklet.addModule('ltc-worklet.js');
             workletNode = new AudioWorkletNode(audioCtx, 'ltc-processor');
@@ -573,10 +585,10 @@
         }
 
         if (!started) {
-          // ScriptProcessor fallback (works on iOS Safari)
-          LTC.init(settings.frameRate, settings.volume / 100, Date.now(), settings.tzOffset, audioCtx.sampleRate);
-          const bufSize = 2048;
-          scriptNode = audioCtx.createScriptProcessor(bufSize, 0, 1);
+          // ScriptProcessor fallback — use 1 input channel (iOS requires it)
+          LTC.init(settings.frameRate, settings.volume / 100, Date.now(), settings.tzOffset, actualRate);
+          const bufSize = 4096;
+          scriptNode = audioCtx.createScriptProcessor(bufSize, 1, 1);
           let lastTcStr = '';
           scriptNode.onaudioprocess = (e) => {
             const output = e.outputBuffer.getChannelData(0);
@@ -589,6 +601,14 @@
               timecodeEl.textContent = tcStr;
             }
           };
+          // iOS needs the node connected to both source and destination
+          // Connect a silent source to the input to keep the processing alive
+          const silentSource = audioCtx.createBufferSource();
+          const silentBuffer = audioCtx.createBuffer(1, 1, actualRate);
+          silentSource.buffer = silentBuffer;
+          silentSource.loop = true;
+          silentSource.connect(scriptNode);
+          silentSource.start();
           scriptNode.connect(audioCtx.destination);
           useWorklet = false;
           started = true;

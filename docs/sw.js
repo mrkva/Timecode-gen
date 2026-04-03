@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ltc-v5';
+const CACHE_NAME = 'ltc-v6';
 const ASSETS = [
   './',
   './index.html',

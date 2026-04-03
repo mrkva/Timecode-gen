@@ -250,7 +250,7 @@
   </div>
 
   <div id="status">Stopped</div>
-  <div id="version">v4</div>
+  <div id="version">v5</div>
   <div id="updateBanner" onclick="location.reload()">Update available — tap to reload</div>
 
   <script>
@@ -547,8 +547,30 @@
       }
     });
 
+    // Unlock iOS audio session by playing a silent <audio> element.
+    // This switches iOS from "ambient" (respects mute switch) to "playback" mode,
+    // so Web Audio output is heard even with the silent switch on, and routes to USB-C DAC.
+    function unlockIOSAudio() {
+      return new Promise((resolve) => {
+        // Tiny MP3 of silence (smallest valid MP3 frame)
+        const silenceB64 = 'SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAABhkVLqZcAAAAAAAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjEzAAAAAAAAAAAAAAAAJAAAAAAAAAABhkVLqZcAAAAAAAAAAAAAAAAAAAAA';
+        const audio = document.createElement('audio');
+        audio.src = 'data:audio/mp3;base64,' + silenceB64;
+        audio.setAttribute('playsinline', '');
+        audio.play().then(resolve).catch(resolve);
+      });
+    }
+
     async function startLTC() {
       try {
+        // On iOS, unlock audio session first (bypasses silent switch, enables USB-C DAC output)
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        if (isIOS) {
+          await unlockIOSAudio();
+        }
+
         // iOS Safari may ignore sampleRate option — we adapt to whatever it gives us
         const AC = window.AudioContext || window.webkitAudioContext;
         audioCtx = new AC({ sampleRate: 48000 });
@@ -559,10 +581,6 @@
         }
 
         const actualRate = audioCtx.sampleRate;
-
-        // Skip AudioWorklet entirely on iOS (unreliable), go straight to ScriptProcessor
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-          (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
         let started = false;
         if (!isIOS && audioCtx.audioWorklet) {

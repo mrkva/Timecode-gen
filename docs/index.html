@@ -64,22 +64,17 @@
 
     /* --- Timecode display --- */
     .tc-section {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex: 1;
-      background: var(--panel);
+      padding: 5px 10px;
       border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
     }
 
     #timecode {
       font-family: 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-      font-size: 52px;
+      font-size: 28px;
       font-weight: 700;
       color: var(--text);
-      letter-spacing: 2px;
-      text-align: center;
-      padding: 16px 0;
+      letter-spacing: 1px;
     }
 
     #timecode.running {
@@ -277,7 +272,7 @@
 <body>
   <div class="top-bar">
     <h1>LTC Timecode</h1>
-    <span class="ver" id="version">v6</span>
+    <span class="ver" id="version">v7</span>
   </div>
 
   <div class="tc-section">

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#0f0f1a">
+  <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="manifest" href="manifest.json">
@@ -11,246 +11,317 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <title>LTC Timecode Generator</title>
   <style>
+    :root {
+      --bg: #000;
+      --panel: #1a1a1a;
+      --tertiary: #111;
+      --text: #e0e0e0;
+      --text-secondary: #888;
+      --accent: #f15656;
+      --border: #333;
+      --input-bg: #111;
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-      background: #0f0f1a;
-      color: #e0e0e0;
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      background: var(--bg);
+      color: var(--text);
       min-height: 100vh;
+      min-height: -webkit-fill-available;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      padding: 20px;
       -webkit-user-select: none;
       user-select: none;
+      -webkit-font-smoothing: antialiased;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
     }
 
-    h1 {
-      font-size: 18px;
-      font-weight: 600;
-      color: #888;
-      letter-spacing: 2px;
+    /* --- Top bar --- */
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 10px;
+      border-bottom: 2px solid var(--accent);
+      flex-shrink: 0;
+    }
+
+    .top-bar h1 {
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
       text-transform: uppercase;
-      margin-bottom: 24px;
+      color: var(--text);
+    }
+
+    .top-bar .ver {
+      font-size: 10px;
+      color: var(--text-secondary);
+    }
+
+    /* --- Timecode display --- */
+    .tc-section {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
     }
 
     #timecode {
-      font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
-      font-size: 56px;
+      font-family: 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+      font-size: 52px;
       font-weight: 700;
-      color: #f0f0f0;
-      letter-spacing: 3px;
-      padding: 20px;
-      margin-bottom: 32px;
+      color: var(--text);
+      letter-spacing: 2px;
       text-align: center;
-      min-width: 340px;
-      border-radius: 12px;
-      background: #1a1a2e;
-      border: 1px solid #2a2a40;
-      transition: color 0.3s;
+      padding: 16px 0;
     }
 
     #timecode.running {
-      color: #4ade80;
+      color: var(--accent);
     }
 
-    #startBtn {
-      width: 200px;
-      height: 60px;
-      border: none;
-      border-radius: 30px;
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      cursor: pointer;
-      transition: all 0.2s;
-      text-transform: uppercase;
-      margin-bottom: 40px;
+    /* --- Controls section --- */
+    .controls {
+      flex-shrink: 0;
+      padding: 0;
     }
 
-    #startBtn.stopped {
-      background: #4ade80;
-      color: #0f0f1a;
-    }
-
-    #startBtn.running {
-      background: #ef4444;
-      color: #fff;
-    }
-
-    #startBtn:active {
-      transform: scale(0.95);
-    }
-
-    .settings {
-      width: 100%;
-      max-width: 380px;
-    }
-
-    .setting-group {
-      margin-bottom: 24px;
-    }
-
-    .setting-label {
-      font-size: 12px;
-      font-weight: 600;
-      color: #666;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      margin-bottom: 10px;
-    }
-
-    .toggle-group {
+    .control-row {
       display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
+      align-items: center;
+      padding: 5px 10px;
+      border-bottom: 1px solid var(--border);
+      gap: 8px;
     }
 
+    .control-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      min-width: 70px;
+      flex-shrink: 0;
+    }
+
+    .control-content {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* --- Buttons (ghost style) --- */
     .toggle-btn {
       flex: 1 1 auto;
-      min-width: 55px;
-      padding: 12px 6px;
-      border: 1px solid #2a2a40;
-      border-radius: 8px;
-      background: #1a1a2e;
-      color: #888;
-      font-size: 14px;
+      height: 36px;
+      min-width: 0;
+      padding: 0 6px;
+      border: 2px solid var(--text);
+      border-radius: 0.375em;
+      background: transparent;
+      color: var(--text);
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 12px;
       font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
       text-align: center;
+      white-space: nowrap;
     }
 
     .toggle-btn.active {
-      background: #2563eb;
+      background: var(--accent);
       color: #fff;
-      border-color: #2563eb;
+      border-color: var(--accent);
     }
 
     .toggle-btn:active {
-      transform: scale(0.95);
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
     }
 
+    #startBtn {
+      height: 36px;
+      min-width: 80px;
+      padding: 0 16px;
+      border: 2px solid var(--accent);
+      border-radius: 0.375em;
+      background: var(--accent);
+      color: #fff;
+      font-family: Helvetica, Arial, sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+
+    #startBtn.running {
+      background: transparent;
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    #startBtn:active {
+      opacity: 0.8;
+    }
+
+    /* --- Select --- */
     select {
-      width: 100%;
-      padding: 12px 16px;
-      border: 1px solid #2a2a40;
-      border-radius: 8px;
-      background: #1a1a2e;
-      color: #e0e0e0;
-      font-size: 16px;
-      font-weight: 500;
+      flex: 1;
+      height: 36px;
+      padding: 0 28px 0 8px;
+      border: 2px solid var(--text);
+      border-radius: 0.375em;
+      background: var(--input-bg);
+      color: var(--text);
+      font-family: 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+      font-size: 12px;
       cursor: pointer;
       appearance: none;
       -webkit-appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' fill='none' stroke-width='2'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 5 5-5' stroke='%23888' fill='none' stroke-width='1.5'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
-      background-position: right 16px center;
+      background-position: right 8px center;
     }
 
+    /* --- Slider --- */
     .slider-row {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 8px;
+      flex: 1;
     }
 
     input[type="range"] {
       flex: 1;
-      height: 6px;
+      height: 4px;
       -webkit-appearance: none;
       appearance: none;
-      background: #2a2a40;
-      border-radius: 3px;
+      background: var(--border);
+      border-radius: 0;
       outline: none;
     }
 
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 24px;
-      height: 24px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
-      background: #2563eb;
+      background: var(--accent);
       cursor: pointer;
     }
 
     .slider-value {
-      font-size: 16px;
-      font-weight: 600;
-      color: #e0e0e0;
-      min-width: 42px;
+      font-family: 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+      font-size: 12px;
+      color: var(--text);
+      min-width: 32px;
       text-align: right;
     }
 
+    /* --- Bottom bar --- */
+    .bottom-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 10px;
+      border-top: 2px solid var(--accent);
+      flex-shrink: 0;
+    }
+
     #status {
-      margin-top: auto;
-      padding-top: 24px;
-      font-size: 13px;
-      color: #444;
+      font-size: 11px;
+      color: var(--text-secondary);
+      letter-spacing: 0.04em;
     }
 
     #version {
-      font-size: 11px;
-      color: #333;
-      padding-top: 8px;
+      font-size: 10px;
+      color: var(--text-secondary);
     }
 
+    /* --- Update banner --- */
     #updateBanner {
       display: none;
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
-      background: #2563eb;
+      background: var(--accent);
       color: #fff;
-      padding: 16px 20px;
-      font-size: 15px;
+      padding: 10px;
+      font-size: 13px;
       font-weight: 600;
       text-align: center;
       cursor: pointer;
       z-index: 100;
+      border-radius: 0;
     }
 
     #updateBanner:active {
-      background: #1d4ed8;
+      opacity: 0.85;
     }
   </style>
 </head>
 <body>
-  <h1>LTC Timecode</h1>
+  <div class="top-bar">
+    <h1>LTC Timecode</h1>
+    <span class="ver" id="version">v6</span>
+  </div>
 
-  <div id="timecode">00:00:00:00</div>
+  <div class="tc-section">
+    <div id="timecode">00:00:00:00</div>
+  </div>
 
-  <button id="startBtn" class="stopped">Start</button>
-
-  <div class="settings">
-    <div class="setting-group">
-      <div class="setting-label">Frame Rate</div>
-      <div class="toggle-group" id="frameRateGroup">
+  <div class="controls">
+    <div class="control-row">
+      <span class="control-label">Output</span>
+      <div class="control-content">
+        <button id="startBtn" class="stopped">Start</button>
+      </div>
+    </div>
+    <div class="control-row">
+      <span class="control-label">Frame rate</span>
+      <div class="control-content" id="frameRateGroup">
         <button class="toggle-btn" data-value="23.976">23.976</button>
         <button class="toggle-btn" data-value="24">24</button>
         <button class="toggle-btn" data-value="25">25</button>
-        <button class="toggle-btn" data-value="29.97">29.97 DF</button>
+        <button class="toggle-btn" data-value="29.97">29.97DF</button>
         <button class="toggle-btn active" data-value="30">30</button>
       </div>
     </div>
-
-    <div class="setting-group">
-      <div class="setting-label">Time Zone</div>
-      <select id="tzSelect"></select>
+    <div class="control-row">
+      <span class="control-label">Time zone</span>
+      <div class="control-content">
+        <select id="tzSelect"></select>
+      </div>
     </div>
-
-    <div class="setting-group">
-      <div class="setting-label">Volume</div>
-      <div class="slider-row">
-        <input type="range" id="volumeSlider" min="0" max="100" value="60">
-        <span class="slider-value" id="volumeValue">60%</span>
+    <div class="control-row">
+      <span class="control-label">Volume</span>
+      <div class="control-content">
+        <div class="slider-row">
+          <input type="range" id="volumeSlider" min="0" max="100" value="60">
+          <span class="slider-value" id="volumeValue">60%</span>
+        </div>
       </div>
     </div>
   </div>
 
-  <div id="status">Stopped</div>
-  <div id="version">v5</div>
+  <div class="bottom-bar">
+    <span id="status">Stopped</span>
+  </div>
+
   <div id="updateBanner" onclick="location.reload()">Update available — tap to reload</div>
 
   <script>

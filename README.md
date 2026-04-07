@@ -1,6 +1,8 @@
 # LTC Timecode Generator
 
-A browser-based SMPTE LTC (Linear Timecode) generator that runs as an offline PWA. Designed to sync audio recorders (Tascam, Zoom, etc.) from a phone or computer — no dedicated hardware generator needed.
+**[Open the app](https://mrkva.github.io/Timecode-gen/)** — works on any phone or computer, installable as offline PWA.
+
+A browser-based SMPTE LTC (Linear Timecode) generator. Designed to sync audio recorders (Tascam, Zoom, etc.) from a phone or computer — no dedicated hardware generator needed.
 
 ## How it works
 
@@ -15,9 +17,7 @@ The signal is generated sample-by-sample on the audio thread (AudioWorklet on de
 
 ## Usage
 
-**Hosted version:** Open [mrkva.github.io/Timecode-gen](https://mrkva.github.io/Timecode-gen/) on your phone or computer. Install as a PWA ("Add to Home Screen") for offline use.
-
-**Self-hosted:** Serve the `docs/` folder over HTTPS (required for service worker and AudioWorklet).
+Install as a PWA ("Add to Home Screen") for offline use. To self-host, serve the `docs/` folder over HTTPS.
 
 ### Setup
 

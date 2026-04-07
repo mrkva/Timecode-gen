@@ -57,9 +57,26 @@
       color: var(--text);
     }
 
+    .top-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
     .top-bar .ver {
       font-size: 10px;
       color: var(--text-secondary);
+    }
+
+    .gh-link {
+      font-size: 10px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      letter-spacing: 0.04em;
+    }
+
+    .gh-link:active {
+      color: var(--accent);
     }
 
     /* --- Timecode display --- */
@@ -272,7 +289,7 @@
 <body>
   <div class="top-bar">
     <h1>LTC Timecode</h1>
-    <span class="ver" id="version">v7</span>
+    <span class="top-right"><a href="https://github.com/mrkva/Timecode-gen" class="gh-link" target="_blank" rel="noopener">src</a> <span class="ver" id="version">v8</span></span>
   </div>
 
   <div class="tc-section">

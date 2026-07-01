@@ -1,6 +1,6 @@
 # LTC Timecode Generator
 
-**[Open the app](https://mrkva.github.io/Timecode-gen/)** — works on any phone or computer, installable as offline PWA.
+**[Open the app](https://mrkva.github.io/ltc-generator/)** — works on any phone or computer, installable as offline PWA.
 
 A browser-based SMPTE LTC (Linear Timecode) generator. Designed to sync audio recorders (Tascam, Zoom, etc.) from a phone or computer — no dedicated hardware generator needed.
 
